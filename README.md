@@ -67,7 +67,7 @@ Vision Encoder (ViT / CLIP)
   ↓
 Projection Layer (Linear)
   ↓
-GPT-style Decoder + Cross-Attention
+GPT-style Decoder (GPT-2 / DistilGPT-2) + Cross-Attention
   ↓
 Generated Caption (word by word)
 ```
@@ -117,7 +117,7 @@ The project includes an interactive **Streamlit UI** that allows:
 ## ▶️ Run the Streamlit App
 
 ```bash
-streamlit run streamlit_app.py
+streamlit run app.py
 ```
 
 Then open:
