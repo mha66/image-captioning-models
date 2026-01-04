@@ -1,0 +1,11 @@
+# for app.py
+pillow
+streamlit
+
+# for model training and inference
+torch
+transformers
+numpy
+matplotlib
+tqdm
+evaluate 
