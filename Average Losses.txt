@@ -6,7 +6,7 @@ ViT + GPT2:
 - Epoch 5: 1.2564
 - Epoch 6: 1.1105
 
-BLEU Scores: train=0.1993, test=0.0474
+BLEU Scores: train=0.1993, test=0.0418
 
  
 
@@ -19,7 +19,7 @@ ViT + DistilGPT2:
 - Epoch 5: 1.3959
 - Epoch 6: 1.2669
 
-BLEU Scores: train=0.1967, test=0.0547
+BLEU Scores: train=0.1967, test=0.0506
 
 
 
@@ -41,6 +41,6 @@ CLIP + GPT2:
 - Epoch 14: 0.6261
 
 BLEU Scores:
-6 Epochs:  train=0.1155, test=0.0266
-10 Epochs: train=0.1922, test=0.0250
-14 Epochs: train=0.2479, test=0.0193
+6 Epochs:  train=0.1155, test=0.0229
+10 Epochs: train=0.1922, test=0.0234
+14 Epochs: train=0.2479, test=0.0204

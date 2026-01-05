@@ -28,11 +28,10 @@ MODEL_DICT = {
 
 # region Model Class Definition
 class ImageCaptioner(nn.Module):
-    def __init__(self, encoder_name, decoder_name):
+    def __init__(self, encoder_name, decoder_name, tokenizer, max_len=20):
         super(ImageCaptioner, self).__init__()
 
-        # 1. Encoder
-        #self.encoder = ViTModel.from_pretrained(Config.ENCODER)
+        # Encoder
         print(f"Loading Encoder: {encoder_name}...")
 
         # Handle Special Case: CLIP
@@ -42,14 +41,14 @@ class ImageCaptioner(nn.Module):
         else:
             self.encoder = AutoModel.from_pretrained(encoder_name)
 
-        # 2. Decoder
+        # Decoder
         print(f"Loading Decoder: {decoder_name}...")
         self.decoder = AutoModelForCausalLM.from_pretrained(
             decoder_name,
             add_cross_attention=True
         )
 
-        # 3. Dynamic Dimensions
+        # Dynamic Dimensions
         enc_config = self.encoder.config
         if hasattr(enc_config, "hidden_size"):
             self.enc_dim = enc_config.hidden_size
@@ -66,43 +65,72 @@ class ImageCaptioner(nn.Module):
 
         self.dec_dim = self.decoder.config.hidden_size
 
-        # 4. Projection Layer
+        # Projection Layer
         self.projection = nn.Linear(self.enc_dim, self.dec_dim)
+        self.eval_mode = True
+        self.tokenizer = tokenizer
+        self.max_len = max_len
 
-    def forward(self, pixel_values, input_ids, labels):
-        pass
+    def forward(self, pixel_values=None, input_ids=None, labels=None):
+        # ----Inference----
+        if self.eval_mode:
+          if pixel_values is None:
+            raise ValueError
+          self.eval()
+          with torch.no_grad():
+              # Encode Image Once
+              enc_outputs = self.encoder(pixel_values=pixel_values)
+              image_features = self.projection(enc_outputs.last_hidden_state)
 
-    def generate_caption(self, pixel_values, tokenizer, max_len=20):
-        self.eval()
-        with torch.no_grad():
-            # 1. Encode Image Once
-            enc_outputs = self.encoder(pixel_values=pixel_values)
-            image_features = self.projection(enc_outputs.last_hidden_state)
+              # Start with the <BOS> token
+              generated_ids = [self.tokenizer.bos_token_id]
 
-            # 2. Start with the <BOS> token
-            generated_ids = [tokenizer.bos_token_id]
+              # Loop to generate words
+              for _ in range(self.max_len):
+                  input_ids = torch.tensor([generated_ids]).to(DEVICE)
 
-            # 3. Loop to generate words
-            for _ in range(max_len):
-                input_ids = torch.tensor([generated_ids]).to(DEVICE)
+                  outputs = self.decoder(
+                      input_ids=input_ids,
+                      encoder_hidden_states=image_features
+                  )
 
-                # Forward pass
-                outputs = self.decoder(
-                    input_ids=input_ids,
-                    encoder_hidden_states=image_features
-                )
+                  # Get the last predicted token
+                  next_token_logits = outputs.logits[0, -1, :]
+                  next_token_id = torch.argmax(next_token_logits).item()
 
-                # Get the last predicted token
-                next_token_logits = outputs.logits[0, -1, :]
-                next_token_id = torch.argmax(next_token_logits).item()
+                  # Stop if we see the <EOS> token
+                  if next_token_id == self.tokenizer.eos_token_id:
+                      break
 
-                # Stop if we see the <EOS> token
-                if next_token_id == tokenizer.eos_token_id:
-                    break
+                  generated_ids.append(next_token_id)
 
-                generated_ids.append(next_token_id)
+              return self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        # ----Training----
+        else:
+          if pixel_values is None or input_ids is None or labels is None:
+            raise ValueError
+          # Encoder Pass
+          enc_output = self.encoder(pixel_values=pixel_values)
+          # Handle different output types (ResNet vs ViT)
+          if hasattr(enc_output, "last_hidden_state"):
+              image_features = enc_output.last_hidden_state
+          elif hasattr(enc_output, "pooler_output"):
+              # Some CNNs might only give pooled output, we unsqueeze to fake a sequence
+              image_features = enc_output.pooler_output.unsqueeze(1)
+          else:
+              # Fallback for raw tensors
+              image_features = enc_output[0]
 
-            return tokenizer.decode(generated_ids, skip_special_tokens=True)
+          # Projection
+          image_features = self.projection(image_features)
+
+          # Decoder Pass
+          outputs = self.decoder(
+              input_ids=input_ids,
+              encoder_hidden_states=image_features,
+              labels=labels
+          )
+          return outputs.loss
 # endregion
 
 # region Loading Functions (Cached)
@@ -129,7 +157,7 @@ def load_components(encoder_name, decoder_name, checkpoint_path):
         processor = AutoFeatureExtractor.from_pretrained(encoder_name)
     
     # Initialize Model Structure
-    model = ImageCaptioner(encoder_name, decoder_name).to(DEVICE)
+    model = ImageCaptioner(encoder_name, decoder_name, tokenizer).to(DEVICE)
     
     # Load Trained Weights
     try:
@@ -194,7 +222,7 @@ if uploaded_file is not None:
             pixel_values = processor(images=image, return_tensors="pt").pixel_values.to(DEVICE)
             
             # Generate
-            caption = model.generate_caption(pixel_values, tokenizer)
+            caption = model(pixel_values)
             
             # Display Result
             st.success("Caption Generated!")
